@@ -1,0 +1,116 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // 1. User Profiles & Private Data
+    match /users/{userId} {
+      // User can only read and write their own profile
+      allow read, write: if isOwner(userId);
+
+      // Private User Subcollections (Khatas, Ledgers, Reminders, Digital KYC Documents)
+      match /khatas/{khataId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /ledger_entries/{entryId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /reminders/{reminderId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /documents/{documentId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Public viewable profile directory (for community display)
+    match /public_profiles/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+    }
+
+    // 2. Direct Messaging & Real-Time Sync (PS26091 Section F & L)
+    // Only conversation participants can access conversations and messages
+    match /conversations/{conversationId} {
+      allow read: if isAuthenticated() && (
+        resource == null ||
+        request.auth.uid in resource.data.participants
+      );
+      
+      allow create: if isAuthenticated() && (
+        request.auth.uid in request.resource.data.participants
+      );
+
+      allow update: if isAuthenticated() && (
+        request.auth.uid in resource.data.participants
+      );
+
+      allow delete: if false; // Soft-delete or archive only
+
+      // Nested Direct Messages
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && (
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+        );
+
+        allow create: if isAuthenticated() && (
+          request.auth.uid == request.resource.data.senderId &&
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+        );
+
+        allow update: if isAuthenticated() && (
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+        );
+
+        allow delete: if false;
+      }
+    }
+
+    // 3. Community Feed & Moderated Posts (Section F)
+    match /community_posts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid
+      );
+
+      // Comments on community posts
+      match /comments/{commentId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+        allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      }
+    }
+
+    // 4. Follow Relations
+    match /followers/{relationId} {
+      allow read: if isAuthenticated();
+      allow create, delete: if isAuthenticated() && (
+        request.resource.data.followerUid == request.auth.uid ||
+        resource.data.followerUid == request.auth.uid
+      );
+    }
+
+    // 5. Government Schemes & Mandi Market Intelligence (Read-Only to Users)
+    match /government_schemes/{schemeId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Managed by backend service
+    }
+
+    match /mandi_prices/{priceId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Managed by backend service
+    }
+  }
+}

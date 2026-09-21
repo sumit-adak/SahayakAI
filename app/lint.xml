@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- Disable density mismatch warning for adaptive icon legacy mipmaps -->
+    <issue id="IconDipSize" severity="ignore" />
+    <!-- Manage version checks without noisy warnings -->
+    <issue id="NewerVersionAvailable" severity="ignore" />
+    <issue id="GradleDependency" severity="ignore" />
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+</lint>
